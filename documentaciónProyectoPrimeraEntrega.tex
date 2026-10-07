@@ -1,0 +1,325 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[hidelinks]{hyperref}
+
+\theoremstyle{definition}
+\newtheorem{definicion}{Definición}
+\newtheorem{restriccion}{Restricción}
+\theoremstyle{remark}
+\newtheorem*{obs}{Observación}
+
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\card}[1]{\lvert #1 \rvert}
+\newcommand{\pend}[1]{\textbf{[POR DEFINIR: #1]}}
+
+\title{Algoritmo de asignación de horarios estudiantiles\\
+\large Definición formal del problema --- Entrega Semana 10}
+\author{Análisis de Algoritmos --- Proyecto 2026-30\\
+Pontificia Universidad Javeriana\\[2pt]
+\textit{Integrantes: Gustavo Aguilar, Santiago Hernández}}
+\date{}
+
+\begin{document}
+\maketitle
+
+%--------------------------------------------------------------------
+\section{Alcance y supuestos}
+%--------------------------------------------------------------------
+Este documento formaliza el problema de asignar, a cada estudiante de un
+conjunto dado, un horario semanal de clases. La formalización es
+\emph{independiente del algoritmo}: sólo define qué es una instancia
+(entrada), qué es una solución (salida), cuándo una solución es
+\emph{factible} y qué significa que sea \emph{mejor} que otra.
+
+Supuestos de modelado:
+\begin{enumerate}[label=(S\arabic*)]
+  \item El tiempo se discretiza en franjas de duración fija; el horario es
+        semanal y se repite igual todas las semanas del semestre.
+  \item La oferta académica (grupos, profesores, salones, franjas y cupos)
+        está \emph{fija} y es dato de entrada; el algoritmo no la modifica.
+  \item Cada estudiante declara qué materias puede cursar (ya incluye
+        prerrequisitos aprobados); el algoritmo no valida el plan de estudios.
+  \item Las preferencias subjetivas (profesores, amigos, tiempos libres)
+        llegan ya cuantificadas como parámetros numéricos de la instancia.
+  \item El horario de cada estudiante se evalúa por separado, salvo en el
+        criterio social y en los cupos, que acoplan a los estudiantes.
+\end{enumerate}
+
+%--------------------------------------------------------------------
+\section{Entrada: definición de instancia}
+%--------------------------------------------------------------------
+
+\subsection{Conjuntos base}
+\begin{definicion}[Conjuntos]
+\begin{itemize}[nosep]
+  \item $E$: estudiantes. \quad $C$: materias. \quad $G$: grupos (secciones).
+  \item $P$: profesores. \quad $R$: salones.
+  \item $D=\{1,\dots,n_d\}$: días de la semana (típicamente $n_d=6$).
+  \item $H=\{1,\dots,n_h\}$: periodos dentro de un día, de duración $L$ minutos.
+  \item $S = D\times H$: franjas semanales. Para $s=(\delta,h)$ se escribe
+        $\mathrm{dia}(s)=\delta$ y $\mathrm{per}(s)=h$.
+\end{itemize}
+Todos los conjuntos son finitos.
+\end{definicion}
+
+\subsection{Oferta académica}
+Cada grupo $g\in G$ tiene:
+\begin{itemize}[nosep]
+  \item $c(g)\in C$: materia a la que pertenece. Se define $G_c=\{g\in G : c(g)=c\}$.
+  \item $p(g)\in P$: profesor que lo dicta.
+  \item $q(g)\in\N$: cupo máximo.
+  \item $\Sigma(g)\subseteq S\times R$: \emph{sesiones}. Un par $(s,r)\in\Sigma(g)$
+        indica que el grupo ocupa la franja $s$ en el salón $r$. Cada franja
+        aparece a lo sumo una vez en $\Sigma(g)$. Se define
+        $T(g)=\{s : (s,r)\in\Sigma(g)\}$ y, para $s\in T(g)$, $\mathrm{sal}_g(s)$
+        el salón correspondiente.
+\end{itemize}
+Cada materia $c\in C$ tiene $\mathrm{cr}(c)\in\N$ créditos.
+
+\subsection{Logística}
+Función de distancia entre salones $d:R\times R\to\N$ (minutos de
+desplazamiento a pie), con $d(r,r)=0$ y $d(r,r')=d(r',r)$. Parámetro
+$\beta\in\N$: minutos de descanso reglamentarios entre periodos consecutivos.
+
+\subsection{Datos por estudiante}
+Para cada $e\in E$:
+\begin{itemize}[nosep]
+  \item $A(e)\subseteq C$: materias que puede cursar (elegibles).
+  \item $\rho(e,c)\in\{1,\dots,\rho_{\max}\}$ para $c\in A(e)$: \emph{prioridad}
+        de cursar $c$ (mayor = más necesaria; una materia obligatoria tiene
+        prioridad alta).
+  \item $U(e)\subseteq S$: franjas \emph{no disponibles} (trabajo, etc.).
+  \item $F(e)\subseteq S$: franjas que \emph{prefiere dejar libres}.
+  \item $\kappa_{\min}(e)\le\kappa_{\max}(e)$: rango de créditos admisible.
+  \item $\pi(e,p)\in[-1,1]$ para $p\in P$: empatía con el profesor $p$
+        ($-1$ rechazo, $0$ neutro, $1$ afinidad).
+\end{itemize}
+Afinidad social entre estudiantes: $\omega:E\times E\to[0,1]$, simétrica y
+con $\omega(e,e)=0$. Un valor alto indica que $e$ y $e'$ desean compartir
+clase (amigos o grupo de trabajo).
+
+\subsection{Parámetros de evaluación}
+Pesos $\lambda_1,\dots,\lambda_5\ge 0$ con $\sum_i\lambda_i=1$ (importancia
+relativa de los criterios) y constantes de normalización $N_1,\dots,N_5>0$
+(ver §\ref{sec:objetivo}).
+
+\begin{definicion}[Instancia]
+Una instancia es la tupla
+\[
+\mathcal{I}=\bigl(E,C,G,P,R,D,H,L,\ c,p,q,\Sigma,\mathrm{cr},\ d,\beta,\
+A,\rho,U,F,\kappa_{\min},\kappa_{\max},\pi,\omega,\ \lambda,N\bigr).
+\]
+El \emph{tamaño} de la instancia se mide por $\card{E}$, $\card{G}$ y
+$\sum_{g}\card{\Sigma(g)}$.
+\end{definicion}
+
+%--------------------------------------------------------------------
+\section{Salida: definición de solución}
+%--------------------------------------------------------------------
+\begin{definicion}[Asignación]
+Una asignación es un conjunto $X\subseteq E\times G$. Se escribe
+$X_e=\{g : (e,g)\in X\}$ (horario del estudiante $e$) y
+$X^g=\{e : (e,g)\in X\}$ (inscritos en $g$). Equivalentemente, variables
+binarias $x_{e,g}=1 \iff (e,g)\in X$.
+\end{definicion}
+
+La salida del algoritmo es una asignación $X$, y opcionalmente el valor de
+cada criterio (§\ref{sec:objetivo}) para auditoría.
+
+\subsection{Restricciones duras}
+\begin{definicion}[Factibilidad]
+$X$ es \emph{factible} para $\mathcal{I}$ si cumple, para todo $e\in E$:
+\begin{restriccion}[Elegibilidad]\label{r:eleg}
+$g\in X_e \Rightarrow c(g)\in A(e)$.
+\end{restriccion}
+\begin{restriccion}[A lo sumo un grupo por materia]\label{r:uno}
+$\card{X_e\cap G_c}\le 1$ para toda $c\in C$.
+\end{restriccion}
+\begin{restriccion}[Sin choques de horario]\label{r:choque}
+Para toda $s\in S$: $\card{\{g\in X_e : s\in T(g)\}}\le 1$.
+\end{restriccion}
+\begin{restriccion}[Disponibilidad]\label{r:disp}
+$g\in X_e\Rightarrow T(g)\cap U(e)=\emptyset$.
+\end{restriccion}
+\begin{restriccion}[Carga de créditos]\label{r:cred}
+$\kappa_{\min}(e)\le\sum_{g\in X_e}\mathrm{cr}(c(g))\le\kappa_{\max}(e)$.
+\end{restriccion}
+y, para todo $g\in G$:
+\begin{restriccion}[Cupo]\label{r:cupo}
+$\card{X^g}\le q(g)$.
+\end{restriccion}
+\end{definicion}
+Se denota $\mathcal{F}(\mathcal{I})$ el conjunto de asignaciones factibles.
+Puede ser vacío (p.\,ej. si $\kappa_{\min}(e)$ es inalcanzable); un
+algoritmo debe poder reportarlo.
+
+\begin{obs}
+Verificar la factibilidad de una $X$ dada es polinomial en el tamaño de la
+instancia, y es independiente de cómo se obtuvo $X$. Este verificador sirve
+como oráculo de pruebas (ver estrategia de datos).
+\end{obs}
+
+%--------------------------------------------------------------------
+\section{Criterios de calidad y función objetivo}\label{sec:objetivo}
+%--------------------------------------------------------------------
+Dada una asignación $X$ y un estudiante $e$, sea
+$O_e^\delta=\{s\in\bigcup_{g\in X_e}T(g) : \mathrm{dia}(s)=\delta\}$
+el conjunto de franjas que $e$ ocupa el día $\delta$, y
+$O_e=\bigcup_\delta O_e^\delta$. Por la restricción~\ref{r:choque}, cada
+$s\in O_e$ pertenece a un único grupo de $X_e$, con salón
+$r_e(s)$ bien definido. Sea $s_1<\dots<s_m$ el orden por periodo de $O_e^\delta$.
+
+\paragraph{C1. Prioridad (cobertura de materias necesarias) --- se maximiza.}
+\[
+\mathrm{Prio}(X)=\sum_{e\in E}\ \sum_{g\in X_e}\rho(e,c(g)),
+\qquad N_1=\sum_{e\in E}\sum_{c\in A(e)}\rho(e,c).
+\]
+
+\paragraph{C2. Social --- se maximiza.}
+\[
+\mathrm{Soc}(X)=\sum_{\{e,e'\}\subseteq E}\omega(e,e')\,\card{X_e\cap X_{e'}},
+\qquad N_2=\sum_{\{e,e'\}\subseteq E}\omega(e,e')\,\card{A(e)\cap A(e')}.
+\]
+(Cuenta los grupos que dos estudiantes con afinidad comparten.)
+
+\paragraph{C3. Profesor --- se maximiza.}
+\[
+\mathrm{Prof}(X)=\sum_{e\in E}\ \sum_{g\in X_e}\pi(e,p(g)),
+\qquad N_3=\sum_{e\in E}\card{A(e)}.
+\]
+
+\paragraph{C4. Logística (desplazamientos) --- se minimiza.}
+Para dos franjas ocupadas consecutivas $s_i,s_{i+1}$ de un mismo día, el
+tiempo disponible para trasladarse es
+$\beta+L\,(\mathrm{per}(s_{i+1})-\mathrm{per}(s_i)-1)$ minutos. Se penaliza el
+déficit:
+\[
+\mathrm{Log}(X)=\sum_{e\in E}\ \sum_{\delta\in D}\ \sum_{i=1}^{m-1}
+\max\Bigl\{0,\ d\bigl(r_e(s_i),r_e(s_{i+1})\bigr)-\beta-L\bigl(\mathrm{per}(s_{i+1})-\mathrm{per}(s_i)-1\bigr)\Bigr\},
+\]
+con $m=\card{O_e^\delta}$ y $N_4=d_{\max}\,\card{E}\,n_d\,(n_h-1)$, donde
+$d_{\max}=\max_{r,r'}d(r,r')$.
+
+\paragraph{C5. Tiempos libres --- se minimiza.}
+Un \emph{hueco} es una franja libre entre dos ocupadas del mismo día.
+\[
+\mathrm{Free}(X)=\sum_{e\in E}\Bigl[\ \sum_{\delta\in D}\sum_{i=1}^{m-1}\bigl(\mathrm{per}(s_{i+1})-\mathrm{per}(s_i)-1\bigr)\ +\ \card{O_e\cap F(e)}\ \Bigr],
+\]
+\[
+N_5=\sum_{e\in E}\bigl(n_d\max\{n_h-2,0\}+\card{F(e)}\bigr).
+\]
+El primer sumando penaliza huecos; el segundo penaliza ocupar franjas que el
+estudiante prefería libres.
+
+\begin{definicion}[Función objetivo]
+\[
+Q(X)=\lambda_1\frac{\mathrm{Prio}(X)}{N_1}+\lambda_2\frac{\mathrm{Soc}(X)}{N_2}
++\lambda_3\frac{\mathrm{Prof}(X)}{N_3}
+-\lambda_4\frac{\mathrm{Log}(X)}{N_4}-\lambda_5\frac{\mathrm{Free}(X)}{N_5}.
+\]
+Cada cociente está en $[0,1]$ (C3 en $[-1,1]$), de modo que los pesos
+$\lambda_i$ son comparables entre sí.
+\end{definicion}
+
+%--------------------------------------------------------------------
+\section{Enunciado del problema}
+%--------------------------------------------------------------------
+\begin{definicion}[Problema de optimización: \textsc{AsigHor}]
+\textbf{Entrada:} una instancia $\mathcal{I}$. \\
+\textbf{Salida:} $X^\ast\in\mathcal{F}(\mathcal{I})$ tal que
+$Q(X^\ast)=\max_{X\in\mathcal{F}(\mathcal{I})}Q(X)$, o el mensaje
+``infactible'' si $\mathcal{F}(\mathcal{I})=\emptyset$.
+\end{definicion}
+
+\begin{definicion}[Versión de decisión: \textsc{AsigHor-D}]
+Dados $\mathcal{I}$ y $\theta\in\R$, ¿existe $X\in\mathcal{F}(\mathcal{I})$ con
+$Q(X)\ge\theta$?
+\end{definicion}
+
+\begin{obs}[Dificultad --- por demostrar]
+Con un solo estudiante, $\lambda_1=1$ y sin criterios acoplados, el problema
+se reduce a elegir a lo sumo un grupo por materia sin choques maximizando
+prioridad, lo que parece corresponder a \emph{Job Interval Selection} (cada
+materia es un trabajo y cada grupo una alternativa de intervalos), conocido
+como NP-difícil. Se debe escribir la reducción formal; se espera que
+\textsc{AsigHor-D} sea NP-completo. Esto justificaría el uso de
+heurísticas o metaheurísticas con garantías empíricas en la entrega final.
+\end{obs}
+
+%--------------------------------------------------------------------
+\section{Ejemplo pequeño}
+%--------------------------------------------------------------------
+$D=\{1,2\}$, $H=\{1,2,3,4\}$, $L=60$, $\beta=10$.
+$E=\{e_1,e_2\}$, $C=\{c_1,c_2\}$ con $A(e_i)=C$, $\mathrm{cr}\equiv 3$,
+$\kappa_{\min}=0$, $\kappa_{\max}=6$, $U=F=\emptyset$. Salones $r_1,r_2,r_3$
+con $d(r_2,r_3)=8$ min.
+
+\begin{center}
+\begin{tabular}{lllll}
+\toprule
+Grupo & Materia & Profesor & Cupo & Sesiones $(\mathrm{día},\mathrm{periodo})$ en salón \\
+\midrule
+$g_1$ & $c_1$ & $p_1$ & 1 & $(1,1),(1,2)$ en $r_1$ \\
+$g_2$ & $c_1$ & $p_2$ & 2 & $(1,3),(1,4)$ en $r_2$ \\
+$g_3$ & $c_2$ & $p_1$ & 2 & $(1,2),(2,2)$ en $r_3$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\begin{itemize}[nosep]
+  \item $X=\{(e_1,g_2),(e_1,g_3),(e_2,g_2),(e_2,g_3)\}$ es factible.
+        Para $e_1$: franjas $(1,2)\to(1,3)$ consecutivas, déficit
+        $\max\{0,\,8-10-0\}=0$.
+  \item $\{(e_1,g_1),(e_1,g_3)\}\subseteq X$ viola~\ref{r:choque}
+        (ambos ocupan $(1,2)$).
+  \item $\{(e_1,g_1),(e_2,g_1)\}\subseteq X$ viola~\ref{r:cupo} ($q(g_1)=1$).
+  \item $\{(e_1,g_1),(e_1,g_2)\}\subseteq X$ viola~\ref{r:uno} (dos grupos de $c_1$).
+\end{itemize}
+
+%--------------------------------------------------------------------
+\section{Formato de entrada y salida (propuesta)}
+%--------------------------------------------------------------------
+Para que cualquier implementación sea comparable, se propone intercambiar
+instancias y soluciones en JSON:
+\begin{itemize}[nosep]
+  \item \textbf{Entrada:} un objeto con las claves
+        \texttt{estudiantes}, \texttt{materias}, \texttt{grupos},
+        \texttt{profesores}, \texttt{salones}, \texttt{distancias},
+        \texttt{parametros} (con $n_d,n_h,L,\beta,\lambda$), y por estudiante
+        \texttt{elegibles}, \texttt{prioridad}, \texttt{no\_disponible},
+        \texttt{preferir\_libre}, \texttt{creditos\_min/max},
+        \texttt{afinidad\_profesor}; y la lista de aristas
+        \texttt{afinidad\_social}.
+  \item \textbf{Salida:} \texttt{asignacion}: lista de pares
+        (estudiante, grupo); \texttt{valor\_Q}; \texttt{valores\_por\_criterio};
+        \texttt{estado} $\in$ \{\texttt{factible}, \texttt{infactible}\}.
+\end{itemize}
+
+%--------------------------------------------------------------------
+\section{Decisiones abiertas del grupo}
+%--------------------------------------------------------------------
+\begin{enumerate}[label=(D\arabic*)]
+  \item \pend{¿Las materias obligatorias deben ser restricción dura (cubrir
+        todas las de prioridad máxima) en lugar de sólo pesar en C1? Hacerlas
+        duras puede volver infactible la instancia.}
+  \item \pend{Granularidad de franjas: ¿1 h o bloques de 2 h como en la
+        oferta real? Define $n_h$ y $L$.}
+  \item \pend{¿Criterio social también cuenta amigos en la misma materia
+        aunque en grupos distintos (afinidad parcial)?}
+  \item \pend{Valores por defecto de $\lambda$ y calibración con
+        encuestas o con conjuntos de prueba.}
+  \item \pend{¿Prerrequisitos y correquisitos entre materias se modelan en
+        $A(e)$ (actual) o como restricciones explícitas?}
+  \item \pend{Validar con el profesor el alcance: ¿una instancia es un
+        semestre completo de la universidad o una facultad/subconjunto?}
+\end{enumerate}
+
+\end{document}
