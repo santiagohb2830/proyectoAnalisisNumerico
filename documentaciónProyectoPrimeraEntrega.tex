@@ -14,14 +14,17 @@
 \newtheorem{restriccion}{Restricción}
 \theoremstyle{remark}
 \newtheorem*{obs}{Observación}
+\theoremstyle{plain}
+\newtheorem{proposicion}{Proposición}
 
+\setlength{\emergencystretch}{3em}
 \newcommand{\N}{\mathbb{N}}
 \newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
 \newcommand{\card}[1]{\lvert #1 \rvert}
-\newcommand{\pend}[1]{\textbf{[POR DEFINIR: #1]}}
 
 \title{Algoritmo de asignación de horarios estudiantiles\\
-\large Definición formal del problema --- Entrega Semana 10}
+\large Definición formal y estrategia de datos --- Entrega Semana 10}
 \author{Análisis de Algoritmos --- Proyecto 2026-30\\
 Pontificia Universidad Javeriana\\[2pt]
 \textit{Integrantes: Gustavo Aguilar, Santiago Hernández}}
@@ -40,17 +43,39 @@ conjunto dado, un horario semanal de clases. La formalización es
 \emph{factible} y qué significa que sea \emph{mejor} que otra.
 
 Supuestos de modelado:
-\begin{enumerate}[label=(S\arabic*)]
+\begin{enumerate}[label=(S\arabic*),ref=S\arabic*]
   \item El tiempo se discretiza en franjas de duración fija; el horario es
         semanal y se repite igual todas las semanas del semestre.
   \item La oferta académica (grupos, profesores, salones, franjas y cupos)
         está \emph{fija} y es dato de entrada; el algoritmo no la modifica.
-  \item Cada estudiante declara qué materias puede cursar (ya incluye
-        prerrequisitos aprobados); el algoritmo no valida el plan de estudios.
+  \item\label{s:consistente} La oferta es \emph{consistente}: dos grupos
+        distintos no ocupan el mismo salón en la misma franja, y un profesor
+        no dicta dos grupos en la misma franja. Por eso estas condiciones no
+        aparecen como restricciones sobre la asignación.
+  \item Cada estudiante declara qué materias puede cursar; $A(e)$ ya tiene
+        resueltos los prerrequisitos y correquisitos, y el algoritmo no valida
+        el plan de estudios.
   \item Las preferencias subjetivas (profesores, amigos, tiempos libres)
         llegan ya cuantificadas como parámetros numéricos de la instancia.
   \item El horario de cada estudiante se evalúa por separado, salvo en el
         criterio social y en los cupos, que acoplan a los estudiantes.
+  \item Las materias obligatorias son restricciones \emph{blandas} con
+        prioridad máxima ($\rho=\rho_{\max}$) y no restricciones duras, para
+        que una instancia con cupos escasos siga teniendo solución. Una
+        variante dura se puede obtener exigiendo $x_{e,g}=1$ para algún
+        $g\in G_c$, $c$ obligatoria, y se trata como extensión.
+  \item Por defecto los periodos duran $L=60$ minutos y una clase de $k$
+        horas es una sesión que ocupa $k$ franjas consecutivas; un día tiene
+        $n_h=15$ periodos (6:00--21:00) y la semana $n_d=6$ días. Son valores
+        por defecto: el modelo admite cualquier $n_d$, $n_h$ y $L$, y deben
+        ajustarse a la oferta real de cada instancia.
+  \item El criterio social sólo cuenta grupos compartidos (misma materia y
+        mismo grupo); coincidir en la materia pero en grupos distintos no suma.
+  \item Una instancia corresponde a una facultad o a un subconjunto de la
+        oferta (p.\,ej. Ingeniería de Sistemas), no a toda la universidad.
+  \item\label{s:pesos} Pesos por defecto
+        $\lambda=(0{,}35;\,0{,}15;\,0{,}10;\,0{,}20;\,0{,}20)$, calibrables por
+        instancia.
 \end{enumerate}
 
 %--------------------------------------------------------------------
@@ -108,14 +133,15 @@ clase (amigos o grupo de trabajo).
 
 \subsection{Parámetros de evaluación}
 Pesos $\lambda_1,\dots,\lambda_5\ge 0$ con $\sum_i\lambda_i=1$ (importancia
-relativa de los criterios) y constantes de normalización $N_1,\dots,N_5>0$
-(ver §\ref{sec:objetivo}).
+relativa de los criterios). Las constantes de normalización
+$N_1,\dots,N_5\ge 0$ \emph{no} son datos de entrada: se calculan a partir de
+la instancia (ver §\ref{sec:objetivo}).
 
 \begin{definicion}[Instancia]
 Una instancia es la tupla
 \[
 \mathcal{I}=\bigl(E,C,G,P,R,D,H,L,\ c,p,q,\Sigma,\mathrm{cr},\ d,\beta,\
-A,\rho,U,F,\kappa_{\min},\kappa_{\max},\pi,\omega,\ \lambda,N\bigr).
+A,\rho,\rho_{\max},U,F,\kappa_{\min},\kappa_{\max},\pi,\omega,\ \lambda\bigr).
 \]
 El \emph{tamaño} de la instancia se mide por $\card{E}$, $\card{G}$ y
 $\sum_{g}\card{\Sigma(g)}$.
@@ -164,7 +190,7 @@ algoritmo debe poder reportarlo.
 \begin{obs}
 Verificar la factibilidad de una $X$ dada es polinomial en el tamaño de la
 instancia, y es independiente de cómo se obtuvo $X$. Este verificador sirve
-como oráculo de pruebas (ver estrategia de datos).
+como oráculo de pruebas (ver §\ref{sec:datos}).
 \end{obs}
 
 %--------------------------------------------------------------------
@@ -226,7 +252,10 @@ Q(X)=\lambda_1\frac{\mathrm{Prio}(X)}{N_1}+\lambda_2\frac{\mathrm{Soc}(X)}{N_2}
 -\lambda_4\frac{\mathrm{Log}(X)}{N_4}-\lambda_5\frac{\mathrm{Free}(X)}{N_5}.
 \]
 Cada cociente está en $[0,1]$ (C3 en $[-1,1]$), de modo que los pesos
-$\lambda_i$ son comparables entre sí.
+$\lambda_i$ son comparables entre sí. Si $N_i=0$ (p.\,ej. $\omega\equiv0$ o
+un solo estudiante dan $N_2=0$; $d\equiv0$ da $N_4=0$), el numerador
+correspondiente también es $0$ para toda $X$, y se conviene que el término
+$i$ vale $0$.
 \end{definicion}
 
 %--------------------------------------------------------------------
@@ -240,32 +269,88 @@ $Q(X^\ast)=\max_{X\in\mathcal{F}(\mathcal{I})}Q(X)$, o el mensaje
 \end{definicion}
 
 \begin{definicion}[Versión de decisión: \textsc{AsigHor-D}]
-Dados $\mathcal{I}$ y $\theta\in\R$, ¿existe $X\in\mathcal{F}(\mathcal{I})$ con
-$Q(X)\ge\theta$?
+Dados $\mathcal{I}$ (con datos numéricos racionales) y $\theta\in\Q$,
+¿existe $X\in\mathcal{F}(\mathcal{I})$ con $Q(X)\ge\theta$?
 \end{definicion}
 
-\begin{obs}[Dificultad --- por demostrar]
-Con un solo estudiante, $\lambda_1=1$ y sin criterios acoplados, el problema
-se reduce a elegir a lo sumo un grupo por materia sin choques maximizando
-prioridad, lo que parece corresponder a \emph{Job Interval Selection} (cada
-materia es un trabajo y cada grupo una alternativa de intervalos), conocido
-como NP-difícil. Se debe escribir la reducción formal; se espera que
-\textsc{AsigHor-D} sea NP-completo. Esto justificaría el uso de
-heurísticas o metaheurísticas con garantías empíricas en la entrega final.
+\subsection{Complejidad}
+Se usan las definiciones de reducción polinomial y de problema NP-completo,
+y la técnica de demostración en dos pasos (pertenecer a NP y reducir desde un
+problema NP-completo conocido), de~\cite[§11.3]{levitin}. El problema de
+partida es \textsc{CNF-SAT}, NP-completo por el teorema de Cook--Levin
+\cite[p.~433]{levitin}.
+
+\begin{proposicion}\label{prop:np}
+\textup{\textsc{AsigHor-D}} es NP-completo, incluso restringido a un solo
+estudiante, $d\equiv0$ y $\lambda=(1,0,0,0,0)$.
+\end{proposicion}
+\begin{proof}
+\emph{Pertenece a NP.} Un certificado es una asignación $X$. Verificar las
+restricciones~\ref{r:eleg}--\ref{r:cupo} y calcular $Q(X)$ (aritmética
+racional) es polinomial en el tamaño de la instancia, y se compara con
+$\theta$.
+
+\emph{Es NP-difícil.} Sea $\varphi=K_1\wedge\dots\wedge K_m$ una fórmula en
+CNF sobre las variables $x_1,\dots,x_n$. Se construye en tiempo polinomial
+una instancia con un único estudiante $e$, así:
+\begin{itemize}[nosep]
+  \item Por cada ocurrencia de un literal $\ell$ en una cláusula $K_j$ se crea
+        una franja propia $u_{j,\ell}$ (todas distintas entre sí). La rejilla
+        $D\times H$ se toma con tantas franjas como ocurrencias.
+  \item Por cada variable $x_i$, una materia $v_i$ con dos grupos:
+        $T_i$ (``$x_i$ verdadera''), cuyas sesiones son las franjas
+        $u_{j,\bar x_i}$ de las ocurrencias de $\bar x_i$, y
+        $F_i$ (``$x_i$ falsa''), cuyas sesiones son las franjas
+        $u_{j,x_i}$ de las ocurrencias de $x_i$.
+  \item Por cada cláusula $K_j$, una materia $k_j$ con un grupo $g_{j,\ell}$ por
+        cada literal $\ell\in K_j$, cuya única sesión es la franja $u_{j,\ell}$.
+  \item Cada grupo tiene su propio salón y su propio profesor, con
+        $d\equiv0$ (todos los salones en un mismo edificio). Así la oferta es
+        consistente (\ref{s:consistente}).
+\end{itemize}
+Todos los cupos son $1$, $A(e)$ contiene todas las materias, $\rho\equiv1$,
+$\mathrm{cr}\equiv1$, $\kappa_{\min}=0$, $\kappa_{\max}=n+m$, $U=F=\emptyset$ y
+$\theta=1$. Con $\lambda=(1,0,0,0,0)$ (y $N_2=N_4=0$, cuyos términos valen
+$0$) se tiene $Q(X)=\mathrm{Prio}(X)/(n+m)$, luego $Q(X)\ge 1$ equivale a que
+$e$ curse las $n+m$ materias.
+
+Si $\varphi$ es satisfacible por $\tau$: se elige $T_i$ si $\tau(x_i)$ es
+verdadera y $F_i$ si es falsa; en cada cláusula se elige $g_{j,\ell}$ con
+$\ell$ verdadero bajo $\tau$. La sesión de $g_{j,\ell}$ está en la franja
+$u_{j,\ell}$, que pertenece sólo al grupo de variable que haría falso a
+$\ell$ ($F_i$ si $\ell=x_i$, $T_i$ si $\ell=\bar x_i$); ese grupo no fue
+elegido, luego no hay choques y $X$ es factible con $Q(X)=1$.
+
+Recíprocamente, si hay $X$ factible con $Q(X)\ge1$, $e$ cursa todas las
+materias. Se define $\tau(x_i)$ verdadera si $T_i\in X_e$. Para cada $K_j$ hay
+un $g_{j,\ell}\in X_e$; por la restricción~\ref{r:choque}, el grupo de variable
+que comparte la franja $u_{j,\ell}$ no está en $X_e$, así que el grupo elegido
+para la variable de $\ell$ es el que hace verdadero a $\ell$. Por tanto cada
+cláusula tiene un literal verdadero y $\tau$ satisface $\varphi$.
+\end{proof}
+
+\begin{obs}
+Como \textsc{AsigHor-D} es NP-completo, un algoritmo polinomial exacto
+resolvería $\mathrm{P}=\mathrm{NP}$. Esto justifica considerar, para la
+entrega final, búsqueda exhaustiva y \emph{backtracking}, ramificación y
+poda, y heurísticas o algoritmos de aproximación, en el sentido de
+\cite[§§3.4, 12.1--12.3]{levitin}.
 \end{obs}
 
 %--------------------------------------------------------------------
-\section{Ejemplo pequeño}
+\section{Ejemplo pequeño}\label{sec:ejemplo}
 %--------------------------------------------------------------------
 $D=\{1,2\}$, $H=\{1,2,3,4\}$, $L=60$, $\beta=10$.
 $E=\{e_1,e_2\}$, $C=\{c_1,c_2\}$ con $A(e_i)=C$, $\mathrm{cr}\equiv 3$,
 $\kappa_{\min}=0$, $\kappa_{\max}=6$, $U=F=\emptyset$. Salones $r_1,r_2,r_3$
-con $d(r_2,r_3)=8$ min.
+con $d(r_2,r_3)=8$ min y $d(r_1,r_2)=d(r_1,r_3)=5$ min. Prioridades
+$\rho\equiv1$; empatía $\pi(e_i,p_1)=1$, $\pi(e_i,p_2)=0$; afinidad
+$\omega(e_1,e_2)=1$; pesos $\lambda$ por defecto (\ref{s:pesos}).
 
 \begin{center}
 \begin{tabular}{lllll}
 \toprule
-Grupo & Materia & Profesor & Cupo & Sesiones $(\mathrm{día},\mathrm{periodo})$ en salón \\
+Grupo & Materia & Profesor & Cupo & Sesiones $(\text{día},\text{periodo})$ en salón \\
 \midrule
 $g_1$ & $c_1$ & $p_1$ & 1 & $(1,1),(1,2)$ en $r_1$ \\
 $g_2$ & $c_1$ & $p_2$ & 2 & $(1,3),(1,4)$ en $r_2$ \\
@@ -284,6 +369,24 @@ $g_3$ & $c_2$ & $p_1$ & 2 & $(1,2),(2,2)$ en $r_3$ \\
   \item $\{(e_1,g_1),(e_1,g_2)\}\subseteq X$ viola~\ref{r:uno} (dos grupos de $c_1$).
 \end{itemize}
 
+\paragraph{Evaluación.} Para $X=\{(e_1,g_2),(e_1,g_3),(e_2,g_2),(e_2,g_3)\}$:
+$\mathrm{Prio}=4$ con $N_1=4$; $\mathrm{Soc}=\omega(e_1,e_2)\card{\{g_2,g_3\}}=2$
+con $N_2=2$; $\mathrm{Prof}=2\,(\pi(\cdot,p_2)+\pi(\cdot,p_1))=2$ con $N_3=4$;
+$\mathrm{Log}=0$ (déficit $0$ en $(1,2)\to(1,3)$ y distancia $0$ en
+$(1,3)\to(1,4)$); $\mathrm{Free}=0$ (franjas $(1,2),(1,3),(1,4)$ seguidas).
+Entonces
+\[
+Q(X)=0{,}35\cdot1+0{,}15\cdot1+0{,}10\cdot0{,}5=0{,}55 .
+\]
+Otra asignación factible, $X'=\{(e_1,g_1),(e_2,g_2),(e_2,g_3)\}$, da
+$Q(X')=0{,}35\cdot0{,}75+0{,}10\cdot0{,}5=0{,}3125$.
+$X$ es óptima: un estudiante sólo puede cursar ambas materias con
+$\{g_2,g_3\}$ (pues $g_1$ choca con $g_3$), y cualquier horario aporta a
+$Q$ a lo sumo $0{,}2$ por prioridad y profesor ($\emptyset$: $0$;
+$\{g_1\}$ o $\{g_3\}$: $0{,}1125$; $\{g_2\}$: $0{,}0875$; $\{g_2,g_3\}$:
+$0{,}2$), el término social a lo sumo $0{,}15$ y $\mathrm{Log},\mathrm{Free}\ge0$;
+luego $Q\le 2\cdot0{,}2+0{,}15=0{,}55$.
+
 %--------------------------------------------------------------------
 \section{Formato de entrada y salida (propuesta)}
 %--------------------------------------------------------------------
@@ -291,35 +394,256 @@ Para que cualquier implementación sea comparable, se propone intercambiar
 instancias y soluciones en JSON:
 \begin{itemize}[nosep]
   \item \textbf{Entrada:} un objeto con las claves
-        \texttt{estudiantes}, \texttt{materias}, \texttt{grupos},
-        \texttt{profesores}, \texttt{salones}, \texttt{distancias},
-        \texttt{parametros} (con $n_d,n_h,L,\beta,\lambda$), y por estudiante
-        \texttt{elegibles}, \texttt{prioridad}, \texttt{no\_disponible},
-        \texttt{preferir\_libre}, \texttt{creditos\_min/max},
-        \texttt{afinidad\_profesor}; y la lista de aristas
-        \texttt{afinidad\_social}.
+        \texttt{estudiantes}, \texttt{materias} (cada una con
+        \texttt{creditos}), \texttt{grupos} (cada uno con \texttt{materia},
+        \texttt{profesor}, \texttt{cupo} y \texttt{sesiones} como lista de
+        (día, periodo, salón)), \texttt{profesores}, \texttt{salones},
+        \texttt{distancias} (matriz simétrica),
+        \texttt{parametros} (con $n_d,n_h,L,\beta,\rho_{\max},\lambda$), y por
+        estudiante \texttt{elegibles}, \texttt{prioridad},
+        \texttt{no\_disponible}, \texttt{preferir\_libre},
+        \texttt{creditos\_min/max}, \texttt{afinidad\_profesor} (los profesores
+        omitidos valen $0$); y \texttt{afinidad\_social} como lista de aristas
+        no dirigidas $(e,e',\omega)$ (los pares omitidos valen $0$).
+  \item \textbf{Metadatos} (opcionales): \texttt{escenario}, \texttt{semilla},
+        \texttt{parametros\_generador} y, si se conocen,
+        \texttt{estado\_esperado} y \texttt{valor\_esperado} o cotas
+        (§\ref{sec:datos}).
   \item \textbf{Salida:} \texttt{asignacion}: lista de pares
         (estudiante, grupo); \texttt{valor\_Q}; \texttt{valores\_por\_criterio};
         \texttt{estado} $\in$ \{\texttt{factible}, \texttt{infactible}\}.
 \end{itemize}
 
 %--------------------------------------------------------------------
-\section{Decisiones abiertas del grupo}
+\section{Estrategia de datos}\label{sec:datos}
 %--------------------------------------------------------------------
-\begin{enumerate}[label=(D\arabic*)]
-  \item \pend{¿Las materias obligatorias deben ser restricción dura (cubrir
-        todas las de prioridad máxima) en lugar de sólo pesar en C1? Hacerlas
-        duras puede volver infactible la instancia.}
-  \item \pend{Granularidad de franjas: ¿1 h o bloques de 2 h como en la
-        oferta real? Define $n_h$ y $L$.}
-  \item \pend{¿Criterio social también cuenta amigos en la misma materia
-        aunque en grupos distintos (afinidad parcial)?}
-  \item \pend{Valores por defecto de $\lambda$ y calibración con
-        encuestas o con conjuntos de prueba.}
-  \item \pend{¿Prerrequisitos y correquisitos entre materias se modelan en
-        $A(e)$ (actual) o como restricciones explícitas?}
-  \item \pend{Validar con el profesor el alcance: ¿una instancia es un
-        semestre completo de la universidad o una facultad/subconjunto?}
+Para probar y evaluar cualquier algoritmo de asignación se necesitan
+instancias (entradas) y, cuando sea posible, soluciones de referencia
+(salidas esperadas). Esta sección define cómo se obtienen unas y otras.
+La estrategia combina \emph{datos reales o semi-reales}, que dan realismo,
+con un \emph{generador sintético}, que da volumen, control y casos límite.
+
+\subsection{Datos requeridos y su fuente}
+\begin{center}
+\small
+\begin{tabular}{p{4.6cm}p{6.2cm}p{3.6cm}}
+\toprule
+Componente de la instancia & Fuente & Tipo \\
+\midrule
+$C$, $\mathrm{cr}$, $G$, $c$, $p$, $q$, $\Sigma$, $P$, $R$ &
+  Oferta académica pública del semestre (horarios, profesores, salones, cupos) &
+  Real \\
+$d$ (distancias) &
+  Plano del campus: edificio de cada salón y tiempo a pie entre edificios;
+  $d=0$ dentro del mismo edificio &
+  Real / medido \\
+$E$, $A(e)$, $\kappa_{\min},\kappa_{\max}$ &
+  Mallas curriculares públicas y semestre de cada perfil de estudiante &
+  Semi-real / sintético \\
+$\rho$, $U$, $F$ &
+  Encuesta (obligatoriedad de materias, horarios de trabajo, tiempos libres
+  deseados) o muestreo sintético &
+  Encuesta / sintético \\
+$\pi$ (profesores) &
+  Encuesta anónima a compañeros, escala de $-1$ a $1$ &
+  Encuesta / sintético \\
+$\omega$ (afinidad social) &
+  Encuesta anónima de grupos de amigos o de trabajo &
+  Encuesta / sintético \\
+$\lambda$ &
+  Pesos por defecto del supuesto (\ref{s:pesos}) &
+  Parámetro \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Datos reales y semi-reales}
+\begin{enumerate}[nosep]
+  \item \textbf{Oferta:} exportar o recolectar la oferta pública de un
+        semestre y llevarla al formato JSON de la sección anterior. Cada
+        grupo se normaliza a sesiones $(s,r)$ con periodos de $L=60$ minutos.
+  \item \textbf{Distancias:} construir una matriz por edificio con
+        tiempos a pie estimados y propagarla a salones.
+  \item \textbf{Preferencias:} encuesta anónima y voluntaria. No se guardan
+        nombres ni códigos; cada respondiente recibe un identificador
+        aleatorio. Las respuestas alimentan $\pi$, $\omega$, $U$ y $F$.
+  \item \textbf{Completado:} donde falten datos (p.\,ej. pocos
+        respondientes), se muestrea de distribuciones ajustadas a las
+        respuestas obtenidas, y la instancia se marca como
+        \emph{semi-real}.
 \end{enumerate}
+\emph{Limitación:} estos datos cubren un solo semestre y pocos perfiles; no
+bastan por sí solos para medir cómo escala el algoritmo, de ahí el generador.
+
+\subsection{Generador sintético parametrizado}
+El generador recibe una semilla y los parámetros siguientes y produce una
+instancia válida en el formato de entrada.
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+Parámetro & Significado \\
+\midrule
+$\card{E},\ \card{C},\ \card{P},\ \card{R}$ & tamaños de los conjuntos \\
+$g_{\min},g_{\max}$ & grupos por materia (uniforme en el rango) \\
+$n_d,\ n_h,\ L,\ \beta$ & rejilla horaria y descanso \\
+$k_{\min},k_{\max}$ & horas por sesión de cada grupo \\
+$\mathrm{cr}_{\min},\mathrm{cr}_{\max}$ & créditos por materia \\
+$\gamma$ & holgura de cupos: $q(g)\approx\gamma\cdot\mathrm{dem}(c)/\card{G_c}$, con $c=c(g)$ \\
+$\bar a$ & materias elegibles por estudiante, $\card{A(e)}$ \\
+$\kappa_{\min},\kappa_{\max}$ & rango de créditos por estudiante \\
+$\rho_{\max},\ f_{\mathrm{obl}}$ & prioridad máxima y fracción de materias obligatorias \\
+$\delta_\omega$ & densidad del grafo social \\
+$\mu_U,\ \mu_F$ & tamaño medio de $U(e)$ y $F(e)$ \\
+$\sigma_\pi$ & dispersión de las preferencias $\pi(e,p)$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+donde $\mathrm{dem}(c)=\card{\{e\in E : c\in A(e)\}}$ es la demanda de la
+materia $c$.
+
+Procedimiento:
+\begin{enumerate}[nosep]
+  \item Crear $C,P,R$ y la matriz $d$ (edificios con posiciones aleatorias en
+        un plano; $d$ proporcional a la distancia euclídea, simétrica).
+  \item Para cada materia crear entre $g_{\min}$ y $g_{\max}$ grupos con
+        profesor, salón y sesiones aleatorias dentro de la rejilla, respetando
+        el supuesto~\ref{s:consistente} (ningún profesor o salón con dos
+        sesiones en la misma franja).
+  \item Crear estudiantes con $A(e)$, $\rho$, $U$, $F$, $\pi$, $\kappa$
+        muestreados; generar $\omega$ como un grafo aleatorio de densidad
+        $\delta_\omega$.
+  \item Fijar cupos con la holgura $\gamma$ según la demanda. Un $\gamma<1$
+        produce escasez de cupos; un $\gamma$ grande los vuelve irrelevantes.
+\end{enumerate}
+Con la misma semilla y parámetros la instancia es idéntica, lo que permite
+repetir los experimentos.
+
+\subsection{Escenarios de prueba}
+\begin{center}
+\small
+\begin{tabular}{llll}
+\toprule
+Escenario & $\card{E}$ & $\card{G}$ (aprox.) & Uso \\
+\midrule
+Pequeño & 2--5 & $\le 12$ & verificación a mano y óptimo exacto \\
+Mediano & 50--200 & 100--300 & comparar contra cotas y línea base \\
+Grande & 1\,000--2\,000 & 500--1\,500 & escalabilidad (escala de una facultad) \\
+Borde & variable & variable & robustez (lista siguiente) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Casos borde, con su salida esperada:
+\begin{enumerate}[label=(\roman*),nosep]
+  \item cupos escasos ($\gamma<1$, $\kappa_{\min}=0$): \texttt{factible}, con
+        grupos llenos hasta $q(g)$ y algunos estudiantes sin ciertas materias;
+  \item $\kappa_{\min}(e)$ inalcanzable (mayor que los créditos de $A(e)$):
+        \texttt{infactible};
+  \item un solo grupo por materia: \texttt{factible}; bajo las condiciones del
+        oráculo~2 el óptimo es analítico;
+  \item todos los grupos en las mismas franjas (choques máximos): cada
+        estudiante cursa a lo sumo un grupo por franja ocupada;
+  \item sin afinidades ($\omega\equiv0$) y sin preferencias ($\pi\equiv0$):
+        $\mathrm{Soc}=\mathrm{Prof}=0$ y los términos con $N_i=0$ valen $0$;
+  \item estudiante sin materias elegibles ($A(e)=\emptyset$): $X_e=\emptyset$,
+        e \texttt{infactible} si $\kappa_{\min}(e)>0$;
+  \item franjas no disponibles que eliminan todos los grupos de una materia
+        $c$: ningún grupo de $G_c$ aparece en $X_e$.
+\end{enumerate}
+
+\subsection{Salidas esperadas (oráculos)}
+No siempre se conoce el óptimo, por lo que se usan varios niveles de
+referencia, de más fuerte a más débil:
+\begin{enumerate}[nosep]
+  \item \textbf{Óptimo exacto} en instancias pequeñas. No se enumeran todos
+        los $X\subseteq E\times G$ ($2^{\card{E}\card{G}}$ casos), sino, por
+        estudiante, sólo los horarios que cumplen~\ref{r:eleg}--\ref{r:cred}
+        (a lo sumo $\prod_{c\in A(e)}(\card{G_c}+1)$), combinados por
+        \emph{backtracking} con poda por cupo~(\ref{r:cupo}). Como
+        alternativa, programación lineal entera sobre $x_{e,g}$, linealizando
+        $Q$ con variables auxiliares ($y_{e,e',g}\le x_{e,g},\,x_{e',g}$ para
+        C2, y variables de déficit y de hueco para C4 y C5).
+  \item \textbf{Familias con óptimo analítico}: instancias construidas de
+        modo que el óptimo es evidente. P.\,ej. un grupo por materia, sin
+        choques ni franjas no disponibles, cupos holgados,
+        $\kappa_{\max}(e)\ge\sum_{c\in A(e)}\mathrm{cr}(c)$ y
+        $\lambda=(1,0,0,0,0)$: el óptimo es que cada estudiante tome todo
+        $A(e)$, con $Q^\ast=1$.
+  \item \textbf{Solución plantada}: el generador construye primero una
+        asignación $X^0$ y ajusta cupos, créditos y disponibilidad para que
+        $X^0$ sea factible. Su valor $Q(X^0)$ es una cota \emph{inferior} del
+        óptimo.
+  \item \textbf{Cota superior}: la relajación lineal del modelo entero o, en
+        su defecto, la cota trivial $Q^\ast\le\lambda_1+\lambda_2+\lambda_3$.
+  \item \textbf{Línea base}: asignación aleatoria factible y asignación
+        voraz por prioridad. Cualquier algoritmo propuesto debe superarlas.
+  \item \textbf{Estado esperado}: en los casos borde, el algoritmo debe
+        responder \texttt{infactible} exactamente cuando
+        $\mathcal{F}(\mathcal{I})=\emptyset$, y cumplir lo indicado en la
+        lista de casos borde.
+\end{enumerate}
+Además, el \textbf{verificador de factibilidad} (restricciones
+\ref{r:eleg}--\ref{r:cupo}) y el recálculo independiente de $Q$ se aplican
+siempre a toda salida, sin importar el algoritmo.
+
+\subsection{Métricas de evaluación}
+\begin{itemize}[nosep]
+  \item Calidad: $Q(X)$ y el valor normalizado de cada criterio C1--C5.
+  \item Cobertura: fracción de materias de prioridad máxima asignadas.
+  \item Brecha relativa: $\bigl(Q^{\mathrm{ref}}-Q(X)\bigr)/\lvert Q^{\mathrm{ref}}\rvert$,
+        donde $Q^{\mathrm{ref}}$ es el óptimo (pequeñas) o la cota superior
+        (medianas y grandes); se reporta sólo si $Q^{\mathrm{ref}}\neq0$.
+  \item Mejora sobre referencias inferiores: $Q(X)-Q(X^0)$ y $Q(X)$ frente a
+        la línea base.
+  \item Factibilidad: porcentaje de salidas que pasan el verificador
+        (debe ser 100\,\%).
+  \item Eficiencia: tiempo de ejecución y memoria en función de
+        $\card{E}$, $\card{G}$ y $\sum_g\card{\Sigma(g)}$.
+\end{itemize}
+
+\subsection{Reproducibilidad y privacidad}
+Cada conjunto de datos se versiona junto con la semilla, los parámetros del
+generador y un esquema JSON que valida la entrada. Los datos de encuesta se
+anonimizan antes de guardarse y nunca incluyen identificadores personales.
+
+%--------------------------------------------------------------------
+\section{Ingeniería de software}
+%--------------------------------------------------------------------
+\paragraph{Requisitos.}
+Funcionales: leer una instancia, producir una asignación, verificarla y
+evaluarla. No funcionales: reproducibilidad (semillas), tiempo razonable en
+instancias grandes y trazabilidad de cada resultado a una instancia y a una
+versión del código.
+
+\paragraph{Módulos previstos.}
+\begin{center}
+\small
+\begin{tabular}{ll}
+\toprule
+Módulo & Responsabilidad \\
+\midrule
+\texttt{modelo} & estructuras de la instancia y de la asignación \\
+\texttt{entrada\_salida} & lectura/escritura JSON y validación de esquema \\
+\texttt{verificador} & restricciones \ref{r:eleg}--\ref{r:cupo} y cálculo de $Q$ \\
+\texttt{generador} & instancias sintéticas con semilla \\
+\texttt{algoritmo} & solución propuesta (semana 17) \\
+\texttt{evaluacion} & ejecución de escenarios, métricas y tablas \\
+\bottomrule
+\end{tabular}
+\end{center}
+La separación entre \texttt{verificador} y \texttt{algoritmo} garantiza que
+la definición formal no dependa del método de solución.
+
+\paragraph{Proceso.}
+Repositorio Git compartido, ramas por tarea y revisión entre integrantes;
+pruebas automáticas del verificador y del generador (incluyendo los casos
+borde); datos de prueba versionados; documentación en este mismo formato.
+
+\begin{thebibliography}{9}
+\bibitem{levitin} A.~Levitin, \emph{Introduction to the Design and Analysis of
+  Algorithms}, 3.\textsuperscript{a} ed., Pearson, 2012. Cap.~3 (búsqueda
+  exhaustiva), cap.~11 (limitaciones del poder de los algoritmos) y cap.~12
+  (cómo enfrentar esas limitaciones).
+\end{thebibliography}
 
 \end{document}
